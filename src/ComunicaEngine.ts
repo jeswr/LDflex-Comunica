@@ -1,12 +1,14 @@
 // @ts-ignore
 import DefaultEngine from '../lib/comunica-engine';
 import { newEngine as LocalEngine } from '@comunica/actor-init-sparql-file'
+import { newEngine as MemoryEngine } from '@comunica/actor-init-sparql-rdfjs'
 import { NamedNode as RDFNamedNode, Term } from 'rdf-js'
 import { ActorInitSparql } from '@comunica/actor-init-sparql/index-browser'
 import { IActorQueryOperationOutput } from '@comunica/bus-query-operation'
 import { BindingsStream } from '@comunica/bus-query-operation'
+import { Store } from 'n3'
 
-type RawSources = URL | NamedNode
+type RawSources = URL | NamedNode | Store | string
 type RawSourcesString = RawSources | string
 type AllSources = RawSourcesString | RawSourcesString[]
 
@@ -34,6 +36,7 @@ export default class ComunicaEngine {
   private DefaultEngine = DefaultEngine
   private _engine: Promise<ActorInitSparql> = this.DefaultEngine
   private LocalEngine = LocalEngine()
+  private MemoryEngine = MemoryEngine()
   private _allowEngineChange: boolean = true
   /**
    * Create a ComunicaEngine to query the given default source.
@@ -41,7 +44,7 @@ export default class ComunicaEngine {
    * The default source can be a single URL, an RDF/JS Datasource,
    * or an array with any of these.
    */
-  constructor(defaultSource: Promise<RawSources>, engine?: () => ActorInitSparql) {
+    constructor(defaultSource: Promise<RawSources> | RawSources, engine?: () => ActorInitSparql) {
     // Preload sources but silence errors; they will be thrown during execution
     this._sources = this.parseSources(defaultSource);
     this._sources.catch(() => null);
@@ -50,10 +53,12 @@ export default class ComunicaEngine {
 
   private async setEngine(engine?: () => ActorInitSparql) {
     if (engine) {
-      this._allowEngineChange = false
+      this._allowEngineChange = false;
       return engine();
     } else if ((await this._sources).length > 0 && (await this._sources).some(location => !isValidURL(location.value)))
       return this.LocalEngine;
+    else if ((await this._sources).length > 0 && (await this._sources).some(location => location instanceof Store))
+      return this.MemoryEngine;
     else
       return this.DefaultEngine;
   }

@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 // @ts-ignore
 const comunica_engine_1 = __importDefault(require("../lib/comunica-engine"));
 const actor_init_sparql_file_1 = require("@comunica/actor-init-sparql-file");
+const actor_init_sparql_rdfjs_1 = require("@comunica/actor-init-sparql-rdfjs");
+const n3_1 = require("n3");
 /**
  * Asynchronous iterator wrapper for the Comunica SPARQL query engine.
  */
@@ -20,6 +22,7 @@ class ComunicaEngine {
         this.DefaultEngine = comunica_engine_1.default;
         this._engine = this.DefaultEngine;
         this.LocalEngine = actor_init_sparql_file_1.newEngine();
+        this.MemoryEngine = actor_init_sparql_rdfjs_1.newEngine();
         this._allowEngineChange = true;
         // Preload sources but silence errors; they will be thrown during execution
         this._sources = this.parseSources(defaultSource);
@@ -33,6 +36,8 @@ class ComunicaEngine {
         }
         else if ((await this._sources).length > 0 && (await this._sources).some(location => !isValidURL(location.value)))
             return this.LocalEngine;
+        else if ((await this._sources).length > 0 && (await this._sources).some(location => location instanceof n3_1.Store))
+            return this.MemoryEngine;
         else
             return this.DefaultEngine;
     }

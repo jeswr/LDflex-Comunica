@@ -201,7 +201,7 @@ describe('A ComunicaEngine instance with a local source file', () => {
     const items = await readAll(result);
     expect(items).toHaveLength(2);
   })
-})
+});
 
 async function readAll(asyncIterator) {
   const items = [];

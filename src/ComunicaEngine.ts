@@ -6,8 +6,11 @@ import { NamedNode as RDFNamedNode, Term } from 'rdf-js'
 import { ActorInitSparql } from '@comunica/actor-init-sparql/index-browser'
 import { IActorQueryOperationOutput } from '@comunica/bus-query-operation'
 import { BindingsStream } from '@comunica/bus-query-operation'
-import { Store } from 'n3'
-
+import { Store, StreamWriter, DataFactory, Parser } from 'n3'
+import * as fs from 'fs'
+import async from 'async'
+import { namedNode } from '@rdfjs/data-model'
+import { Algebra } from "sparqlalgebrajs";
 type RawSources = URL | NamedNode | Store | string
 type RawSourcesString = RawSources | string
 type AllSources = RawSourcesString | RawSourcesString[]
@@ -28,10 +31,14 @@ interface queryResult extends IActorQueryOperationOutput {
   bindingsStream?: BindingsStream
 }
 
+export interface queryEngine { // Async Generator definition is based on the type signature of execute in the communica engine
+  execute(query: string | Algebra.Operation, sources?: Promise<RawSources> | RawSources | undefined): AsyncGenerator<Term | any, void, undefined>//Iterable<bindings>
+}
+
 /**
  * Asynchronous iterator wrapper for the Comunica SPARQL query engine.
  */
-export default class ComunicaEngine {
+export default class ComunicaEngine implements queryEngine {
   private _sources: Promise<Sources>
   private DefaultEngine = DefaultEngine
   private _engine: Promise<ActorInitSparql> = this.DefaultEngine
@@ -44,7 +51,7 @@ export default class ComunicaEngine {
    * The default source can be a single URL, an RDF/JS Datasource,
    * or an array with any of these.
    */
-    constructor(defaultSource: Promise<RawSources> | RawSources, engine?: () => ActorInitSparql) {
+  constructor(defaultSource: Promise<RawSources> | RawSources, engine?: () => ActorInitSparql) {
     // Preload sources but silence errors; they will be thrown during execution
     this._sources = this.parseSources(defaultSource);
     this._sources.catch(() => null);
@@ -77,25 +84,57 @@ export default class ComunicaEngine {
   /**
    * Creates an asynchronous iterable of results for the given SPARQL query.
    */
-  async* execute(sparql: string, source: Promise<RawSources>): AsyncGenerator<Term, void, undefined> {
+  async* execute(sparql: string, source?: Promise<RawSources> | RawSources | undefined): AsyncGenerator<Term | any, void, undefined> {
     // Load the sources if passed, the default sources otherwise    
     const sources = await (source ? this.parseSources(source) : this._sources);
-
-    if ((/^\s*(?:INSERT|DELETE)/i).test(sparql))
-      yield* this.executeUpdate(sparql, source);
-
+    const engine = await this.getEngine(sources)
     if (sources.length !== 0) {
-      // Execute the query and yield the results
-      const queryResult: queryResult = await (await this.getEngine(sources)).query(sparql, { sources });
-      yield* this.streamToAsyncIterable(queryResult.bindingsStream as BindingsStream);
+      if ((/^\s*(?:INSERT|DELETE)/i).test(sparql))
+        yield* this.executeUpdate(sparql, sources, engine);
+      else {
+        const queryResult = await engine.query(sparql, { sources });
+        yield* this.streamToAsyncIterable(queryResult.bindingsStream);
+      }
     }
   }
 
   /**
    * Creates an asynchronous iterable with the results of the SPARQL UPDATE query.
    */
-  async* executeUpdate(sparql: string, source: Promise<AllSources> | AllSources) {
-    throw new Error(`SPARQL UPDATE queries are unsupported, received: ${sparql}`);
+  async* executeUpdate(sparql: string, sources: Sources, engine: ActorInitSparql) {
+    // console.log('the engine is', engine)
+    if (true || engine instanceof LocalEngine) {
+      for (const source of sources) {
+        const parser = new Parser()
+        const writer = new StreamWriter()
+        const triples = /\{[^]*\}/.exec(sparql)?.[0].replace('{', '').replace('}', '')
+        const writeStream = fs.createWriteStream(source.value).write(triples)
+      }
+      // {
+      //   size: 1,
+      //   values: () => true,
+      //   bindings: {
+      //     values: () => true
+      //   }
+      // };
+      // const triples = /\{[^]*\}/.exec(sparql)?.[0].replace('{', '').replace('}', '')
+      // fs.createWriteStream
+
+
+      // parser.parse(triples, (error: Error, quad: Quad, prefixes: Prefixes<string>) => {
+      //   if (quad) store.addQuad(quad)
+      //   else if (prefixes) executer({store, prefixes})
+      //   else reject(`Error occured when parsing file ${path}: ${error}`)
+      // }))
+    } else {
+      throw new Error(`SPARQL UPDATE queries are unsupported, received: ${sparql}`);
+    }
+    throw new Error(`Inside sparq update`)
+    // yield this.execute(
+    //   'SELECT DISTINCT ?subject WHERE { ?subject ?p ?o }',
+    //   // @ts-ignore
+    //   this._sources
+    // )
   }
 
   /**
@@ -129,9 +168,9 @@ export default class ComunicaEngine {
     else
       throw new Error(`Unsupported source: ${source}`);
 
-    // Add Comunica source details
-    return (allSources as Array<string | NamedNode | Source>).map(src => ({
-      value: (typeof src === 'object') ? (src.value ?? src) : src,
+    // @ts-ignore Add Comunica source details
+    return (allSources as Array<string | NamedNode | Source>).map((src: string | NamedNode | Source) => ({
+      value: (typeof src === 'object' && 'value' in src) ? (src.value ?? src) : src,
       type: (typeof src === 'object' && 'type' in src) ? src.type : null
     }));
   }

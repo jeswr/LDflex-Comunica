@@ -31,7 +31,9 @@
     "@comunica/actor-http-solid-auth-fetch": "^1.0.1",
     "@comunica/actor-init-sparql": "^1.12.1",
     "@comunica/actor-init-sparql-file": "^1.16.2",
-    "@comunica/actor-init-sparql-rdfjs": "^1.16.2"
+    "@comunica/actor-init-sparql-rdfjs": "^1.16.2",
+    "@types/async": "^3.2.3",
+    "async": "^3.2.0"
   },
   "peerDependencies": {
     "ldflex": "^2.0.0"

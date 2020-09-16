@@ -1,4 +1,23 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -8,6 +27,7 @@ const comunica_engine_1 = __importDefault(require("../lib/comunica-engine"));
 const actor_init_sparql_file_1 = require("@comunica/actor-init-sparql-file");
 const actor_init_sparql_rdfjs_1 = require("@comunica/actor-init-sparql-rdfjs");
 const n3_1 = require("n3");
+const fs = __importStar(require("fs"));
 /**
  * Asynchronous iterator wrapper for the Comunica SPARQL query engine.
  */
@@ -58,19 +78,52 @@ class ComunicaEngine {
     async *execute(sparql, source) {
         // Load the sources if passed, the default sources otherwise    
         const sources = await (source ? this.parseSources(source) : this._sources);
-        if ((/^\s*(?:INSERT|DELETE)/i).test(sparql))
-            yield* this.executeUpdate(sparql, source);
+        const engine = await this.getEngine(sources);
         if (sources.length !== 0) {
-            // Execute the query and yield the results
-            const queryResult = await (await this.getEngine(sources)).query(sparql, { sources });
-            yield* this.streamToAsyncIterable(queryResult.bindingsStream);
+            if ((/^\s*(?:INSERT|DELETE)/i).test(sparql))
+                yield* this.executeUpdate(sparql, sources, engine);
+            else {
+                const queryResult = await engine.query(sparql, { sources });
+                yield* this.streamToAsyncIterable(queryResult.bindingsStream);
+            }
         }
     }
     /**
      * Creates an asynchronous iterable with the results of the SPARQL UPDATE query.
      */
-    async *executeUpdate(sparql, source) {
-        throw new Error(`SPARQL UPDATE queries are unsupported, received: ${sparql}`);
+    async *executeUpdate(sparql, sources, engine) {
+        // console.log('the engine is', engine)
+        if (true || engine instanceof actor_init_sparql_file_1.newEngine) {
+            for (const source of sources) {
+                const parser = new n3_1.Parser();
+                const writer = new n3_1.StreamWriter();
+                const triples = /\{[^]*\}/.exec(sparql)?.[0].replace('{', '').replace('}', '');
+                const writeStream = fs.createWriteStream(source.value).write(triples);
+            }
+            // {
+            //   size: 1,
+            //   values: () => true,
+            //   bindings: {
+            //     values: () => true
+            //   }
+            // };
+            // const triples = /\{[^]*\}/.exec(sparql)?.[0].replace('{', '').replace('}', '')
+            // fs.createWriteStream
+            // parser.parse(triples, (error: Error, quad: Quad, prefixes: Prefixes<string>) => {
+            //   if (quad) store.addQuad(quad)
+            //   else if (prefixes) executer({store, prefixes})
+            //   else reject(`Error occured when parsing file ${path}: ${error}`)
+            // }))
+        }
+        else {
+            throw new Error(`SPARQL UPDATE queries are unsupported, received: ${sparql}`);
+        }
+        throw new Error(`Inside sparq update`);
+        // yield this.execute(
+        //   'SELECT DISTINCT ?subject WHERE { ?subject ?p ?o }',
+        //   // @ts-ignore
+        //   this._sources
+        // )
     }
     /**
      * Parses the source(s) into an array of Comunica sources.
@@ -100,9 +153,9 @@ class ComunicaEngine {
         // Error on unsupported sources
         else
             throw new Error(`Unsupported source: ${source}`);
-        // Add Comunica source details
-        return allSources.map(src => ({
-            value: (typeof src === 'object') ? (src.value ?? src) : src,
+        // @ts-ignore Add Comunica source details
+        return allSources.map((src) => ({
+            value: (typeof src === 'object' && 'value' in src) ? (src.value ?? src) : src,
             type: (typeof src === 'object' && 'type' in src) ? src.type : null
         }));
     }
